@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "dwd-mcp": {
+      "command": "/home/chris/dwd-mcp/.venv/bin/python3",
+      "args": [
+        "/home/chris/dwd-mcp/server.py"
+      ]
+    }
+  }
+}

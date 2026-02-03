@@ -1,0 +1,15 @@
+{
+  "name": "dwd-mcp",
+  "version": "1.0.0",
+  "contextFileName": "GEMINI.md",
+  "mcpServers": {
+    "dwd": {
+      "command": "${extensionPath}/.venv/bin/python3",
+      "args": ["${extensionPath}/server.py"],
+      "cwd": "${extensionPath}",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
