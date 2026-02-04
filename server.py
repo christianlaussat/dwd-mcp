@@ -47,6 +47,20 @@ async def list_tools() -> List[types.Tool]:
                 },
                 "required": ["latitude", "longitude"],
             },
+        ),
+        types.Tool(
+            name="get_historical_weather",
+            description="Get historical weather data (temperature, precipitation, wind) for a location (latitude, longitude) for a specific date range.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "latitude": {"type": "number", "description": "Latitude of the location"},
+                    "longitude": {"type": "number", "description": "Longitude of the location"},
+                    "start_date": {"type": "string", "description": "Start date (ISO 8601 format, e.g., 2024-12-01)"},
+                    "end_date": {"type": "string", "description": "End date (ISO 8601 format, e.g., 2024-12-31)"},
+                },
+                "required": ["latitude", "longitude", "start_date", "end_date"],
+            },
         )
     ]
 
@@ -344,6 +358,132 @@ async def get_forecast(arguments: Any) -> List[types.TextContent]:
     except Exception as e:
         logger.error(f"Error fetching forecast: {e}")
         return [types.TextContent(type="text", text=f"Error fetching forecast data: {str(e)}")]
+
+async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
+    latitude = arguments.get("latitude")
+    longitude = arguments.get("longitude")
+    start_date_str = arguments.get("start_date")
+    end_date_str = arguments.get("end_date")
+
+    if latitude is None or longitude is None or not start_date_str or not end_date_str:
+        raise ValueError("latitude, longitude, start_date, and end_date are required")
+
+    try:
+        # Parse dates
+        start_date = datetime.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+        end_date = datetime.datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
+        
+        # Ensure UTC if no timezone provided
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=datetime.timezone.utc)
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=datetime.timezone.utc)
+            
+        parameters = [
+            ("hourly", "temperature_air", "temperature_air_mean_2m"),
+            ("hourly", "precipitation", "precipitation_height"),
+            ("hourly", "wind", "wind_speed"),
+            ("hourly", "wind", "wind_direction"),
+            ("hourly", "cloud_type", "cloud_cover_total"),
+        ]
+        
+        request = DwdObservationRequest(
+            parameters=parameters,
+            periods=["historical", "recent"]
+        )
+        
+        stations = request.filter_by_rank(latlon=(latitude, longitude), rank=1)
+        
+        if stations.df.is_empty():
+            return [types.TextContent(type="text", text="No weather station found nearby.")]
+        
+        # Get unique closest stations for each dataset
+        best_stations_df = stations.df.sort("distance").unique(subset=["dataset"], keep="first")
+        target_station_ids = best_stations_df["station_id"].unique().to_list()
+        
+        # Map dataset to station info for display
+        dataset_station_map = {}
+        for row in best_stations_df.iter_rows(named=True):
+            dataset_station_map[row["dataset"]] = {
+                "name": row["name"],
+                "id": row["station_id"],
+                "distance": row["distance"]
+            }
+
+        stations_filtered = request.filter_by_station_id(station_id=target_station_ids)
+        values = stations_filtered.values.all()
+        df = values.df
+        
+        if df.is_empty():
+             return [types.TextContent(type="text", text="No historical data available for the nearest stations.")]
+
+        # Manual filter by date
+        df = df.filter((pl.col("date") >= start_date) & (pl.col("date") <= end_date))
+        
+        if df.is_empty():
+             return [types.TextContent(type="text", text=f"No data found in the requested date range ({start_date} to {end_date}).")]
+
+        # Summary statistics
+        response_lines = [f"Historical Weather Summary:"]
+        response_lines.append(f"Period: {start_date} to {end_date}")
+        response_lines.append("")
+        
+        # Temperature
+        temp_df = df.filter(pl.col("parameter") == "temperature_air_mean_2m").drop_nulls(subset=["value"])
+        if not temp_df.is_empty():
+            min_temp = temp_df["value"].min()
+            max_temp = temp_df["value"].max()
+            avg_temp = temp_df["value"].mean()
+            
+            # Find when min/max occurred
+            min_row = temp_df.sort("value").head(1).row(0, named=True)
+            max_row = temp_df.sort("value", descending=True).head(1).row(0, named=True)
+            
+            # Find station name for temperature
+            st_info = dataset_station_map.get("temperature_air", {"name": "Unknown"})
+            
+            response_lines.append(f"Temperature (from {st_info['name']}):")
+            response_lines.append(f"- Min: {min_temp:.1f} °C (on {min_row['date']})")
+            response_lines.append(f"- Max: {max_temp:.1f} °C (on {max_row['date']})")
+            response_lines.append(f"- Average: {avg_temp:.1f} °C")
+            response_lines.append("")
+            
+        # Precipitation
+        precip_df = df.filter(pl.col("parameter") == "precipitation_height").drop_nulls(subset=["value"])
+        if not precip_df.is_empty():
+            total_precip = precip_df["value"].sum()
+            max_precip_row = precip_df.sort("value", descending=True).head(1).row(0, named=True)
+            
+            st_info = dataset_station_map.get("precipitation", {"name": "Unknown"})
+
+            response_lines.append(f"Precipitation (from {st_info['name']}):")
+            response_lines.append(f"- Total: {total_precip:.1f} mm")
+            if total_precip > 0:
+                response_lines.append(f"- Max Hourly: {max_precip_row['value']:.1f} mm (on {max_precip_row['date']})")
+            response_lines.append("")
+            
+        # Wind
+        wind_df = df.filter(pl.col("parameter") == "wind_speed").drop_nulls(subset=["value"])
+        if not wind_df.is_empty():
+            max_wind_row = wind_df.sort("value", descending=True).head(1).row(0, named=True)
+            avg_wind = wind_df["value"].mean()
+            
+            st_info = dataset_station_map.get("wind", {"name": "Unknown"})
+
+            response_lines.append(f"Wind (from {st_info['name']}):")
+            response_lines.append(f"- Max Speed: {max_wind_row['value']:.1f} m/s (on {max_wind_row['date']})")
+            response_lines.append(f"- Average Speed: {avg_wind:.1f} m/s")
+            response_lines.append("")
+
+        if len(response_lines) <= 3:
+            # Only header and period, no actual data
+            return [types.TextContent(type="text", text=f"No relevant weather parameters found in the requested range for the nearby stations. Found parameters: {df['parameter'].unique().to_list()}")]
+
+        return [types.TextContent(type="text", text="\n".join(response_lines))]
+
+    except Exception as e:
+        logger.error(f"Error fetching historical weather: {e}")
+        return [types.TextContent(type="text", text=f"Error fetching historical weather data: {str(e)}")]
 
 async def main():
     async with stdio_server() as (read_stream, write_stream):
