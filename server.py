@@ -96,6 +96,8 @@ async def get_current_weather(arguments: Any) -> List[types.TextContent]:
             ("hourly", "precipitation"),
             ("hourly", "wind"),
             ("hourly", "cloud_type"),
+            ("hourly", "pressure"),
+            ("hourly", "solar"),
         ]
         
         request = DwdObservationRequest(
@@ -154,14 +156,20 @@ async def get_current_weather(arguments: Any) -> List[types.TextContent]:
         param_map = {
             "temperature_air_mean_2m": {"label": "Temperature", "unit": "°C", "dataset": "temperature_air"},
             "humidity": {"label": "Humidity", "unit": "%", "dataset": "temperature_air"},
+            "pressure_air_site": {"label": "Pressure (Station)", "unit": "hPa", "dataset": "pressure"},
+            "pressure_air_sea_level": {"label": "Pressure (Sea Level)", "unit": "hPa", "dataset": "pressure"},
             "precipitation_height": {"label": "Precipitation", "unit": "mm", "dataset": "precipitation"},
             "wind_speed": {"label": "Wind Speed", "unit": "m/s", "dataset": "wind"},
             "wind_direction": {"label": "Wind Direction", "unit": "°", "dataset": "wind"},
             "cloud_cover_total": {"label": "Cloud Cover", "unit": "%", "dataset": "cloud_type"},
+            "radiation_global": {"label": "Global Radiation", "unit": "J/cm²", "dataset": "solar"},
         }
         
         # Order of display
-        display_order = ["temperature_air_mean_2m", "humidity", "precipitation_height", "wind_speed", "wind_direction", "cloud_cover_total"]
+        display_order = [
+            "temperature_air_mean_2m", "humidity", "pressure_air_site", "pressure_air_sea_level",
+            "precipitation_height", "wind_speed", "wind_direction", "cloud_cover_total", "radiation_global"
+        ]
         
         results = {}
         latest_time = None
@@ -257,11 +265,14 @@ async def get_forecast(arguments: Any) -> List[types.TextContent]:
         request = DwdMosmixRequest(
             parameters=[
                 ("hourly", "small", "temperature_air_mean_2m"),
+                ("hourly", "small", "humidity_air_mean_2m"),
+                ("hourly", "small", "pressure_air_site_mean_2m"),
                 ("hourly", "small", "precipitation_height_significant_weather_last_1h"),
                 ("hourly", "small", "wind_speed"),
                 ("hourly", "small", "wind_direction"),
                 ("hourly", "small", "cloud_cover_total"),
                 ("hourly", "small", "water_equivalent_snow_depth_new_last_1h"),
+                ("hourly", "small", "radiation_global_last_1h"),
             ]
         )
         
@@ -325,7 +336,17 @@ async def get_forecast(arguments: Any) -> List[types.TextContent]:
             temp = data.get("temperature_air_mean_2m")
             if temp is not None:
                 parts.append(f"Temp: {temp:.1f} °C")
+            
+            # Humidity
+            hum = data.get("humidity_air_mean_2m")
+            if hum is not None:
+                parts.append(f"Hum: {hum:.1f} %")
                 
+            # Pressure
+            press = data.get("pressure_air_site_mean_2m")
+            if press is not None:
+                parts.append(f"Press: {press:.1f} hPa")
+
             # Wind
             wind_speed = data.get("wind_speed")
             wind_dir = data.get("wind_direction")
@@ -349,6 +370,11 @@ async def get_forecast(arguments: Any) -> List[types.TextContent]:
             clouds = data.get("cloud_cover_total")
             if clouds is not None:
                 parts.append(f"Clouds: {clouds:.0f}%")
+
+            # Solar
+            solar = data.get("radiation_global_last_1h")
+            if solar is not None:
+                parts.append(f"Solar: {solar:.0f} J/cm²")
             
             line = f"{date}: {', '.join(parts)}"
             response_lines.append(line)
@@ -381,10 +407,14 @@ async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
             
         parameters = [
             ("hourly", "temperature_air", "temperature_air_mean_2m"),
+            ("hourly", "temperature_air", "humidity"),
             ("hourly", "precipitation", "precipitation_height"),
             ("hourly", "wind", "wind_speed"),
             ("hourly", "wind", "wind_direction"),
             ("hourly", "cloud_type", "cloud_cover_total"),
+            ("hourly", "pressure", "pressure_air_site"),
+            ("hourly", "pressure", "pressure_air_sea_level"),
+            ("hourly", "solar", "radiation_global"),
         ]
         
         request = DwdObservationRequest(
@@ -428,8 +458,12 @@ async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
         response_lines.append(f"Period: {start_date} to {end_date}")
         response_lines.append("")
         
-        # Temperature
+        # Temperature & Humidity
         temp_df = df.filter(pl.col("parameter") == "temperature_air_mean_2m").drop_nulls(subset=["value"])
+        hum_df = df.filter(pl.col("parameter") == "humidity").drop_nulls(subset=["value"])
+        
+        st_info_temp = dataset_station_map.get("temperature_air", {"name": "Unknown"})
+
         if not temp_df.is_empty():
             min_temp = temp_df["value"].min()
             max_temp = temp_df["value"].max()
@@ -439,15 +473,37 @@ async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
             min_row = temp_df.sort("value").head(1).row(0, named=True)
             max_row = temp_df.sort("value", descending=True).head(1).row(0, named=True)
             
-            # Find station name for temperature
-            st_info = dataset_station_map.get("temperature_air", {"name": "Unknown"})
-            
-            response_lines.append(f"Temperature (from {st_info['name']}):")
+            response_lines.append(f"Temperature (from {st_info_temp['name']}):")
             response_lines.append(f"- Min: {min_temp:.1f} °C (on {min_row['date']})")
             response_lines.append(f"- Max: {max_temp:.1f} °C (on {max_row['date']})")
             response_lines.append(f"- Average: {avg_temp:.1f} °C")
+        
+        if not hum_df.is_empty():
+            avg_hum = hum_df["value"].mean()
+            min_hum = hum_df["value"].min()
+            max_hum = hum_df["value"].max()
+            if temp_df.is_empty():
+                response_lines.append(f"Humidity (from {st_info_temp['name']}):")
+            response_lines.append(f"- Humidity: Avg {avg_hum:.1f}%, Min {min_hum:.0f}%, Max {max_hum:.0f}%")
+        
+        if not temp_df.is_empty() or not hum_df.is_empty():
             response_lines.append("")
             
+        # Pressure
+        press_df = df.filter(pl.col("parameter") == "pressure_air_site").drop_nulls(subset=["value"])
+        if press_df.is_empty():
+             press_df = df.filter(pl.col("parameter") == "pressure_air_sea_level").drop_nulls(subset=["value"])
+        
+        if not press_df.is_empty():
+            avg_press = press_df["value"].mean()
+            min_press = press_df["value"].min()
+            max_press = press_df["value"].max()
+            st_info = dataset_station_map.get("pressure", {"name": "Unknown"})
+            response_lines.append(f"Pressure (from {st_info['name']}):")
+            response_lines.append(f"- Average: {avg_press:.1f} hPa")
+            response_lines.append(f"- Range: {min_press:.1f} to {max_press:.1f} hPa")
+            response_lines.append("")
+
         # Precipitation
         precip_df = df.filter(pl.col("parameter") == "precipitation_height").drop_nulls(subset=["value"])
         if not precip_df.is_empty():
@@ -473,6 +529,17 @@ async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
             response_lines.append(f"Wind (from {st_info['name']}):")
             response_lines.append(f"- Max Speed: {max_wind_row['value']:.1f} m/s (on {max_wind_row['date']})")
             response_lines.append(f"- Average Speed: {avg_wind:.1f} m/s")
+            response_lines.append("")
+
+        # Solar
+        solar_df = df.filter(pl.col("parameter") == "radiation_global").drop_nulls(subset=["value"])
+        if not solar_df.is_empty():
+            total_solar = solar_df["value"].sum()
+            max_solar_row = solar_df.sort("value", descending=True).head(1).row(0, named=True)
+            st_info = dataset_station_map.get("solar", {"name": "Unknown"})
+            response_lines.append(f"Solar Radiation (from {st_info['name']}):")
+            response_lines.append(f"- Total: {total_solar:.1f} J/cm²")
+            response_lines.append(f"- Max Hourly: {max_solar_row['value']:.1f} J/cm² (on {max_solar_row['date']})")
             response_lines.append("")
 
         if len(response_lines) <= 3:

@@ -6,8 +6,8 @@ For detailed extension documentation, see [GEMINI.md](GEMINI.md).
 
 ## Features
 
-- **Current Weather:** Get the latest weather conditions (temperature, precipitation, wind, clouds) for a specific location.
-- **Forecast:** Get hourly weather forecast (temperature, precipitation, wind, clouds) for the next 24 hours (or specified duration).
+- **Current Weather:** Get the latest weather conditions (temperature, humidity, pressure, precipitation, wind, clouds, solar radiation) for a specific location.
+- **Forecast:** Get hourly weather forecast (temperature, humidity, pressure, precipitation, wind, clouds, solar radiation) for the next 24 hours (or specified duration).
 
 ## Installation & Usage
 
@@ -31,6 +31,13 @@ For detailed extension documentation, see [GEMINI.md](GEMINI.md).
     ```bash
     python server.py
     ```
+
+## Testing
+
+Run the test suite using pytest:
+```bash
+PYTHONPATH=. .venv/bin/python3 -m pytest tests/
+```
 
 ## Tools
 

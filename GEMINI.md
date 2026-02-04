@@ -11,20 +11,20 @@ This extension integrates weather data from the Deutscher Wetterdienst (DWD) int
 ## Tools
 
 ### `get_current_weather`
-Returns current weather conditions for a specific location.
+Returns current weather conditions (temperature, humidity, pressure, wind, precipitation, clouds, solar radiation) for a specific location.
 - **Parameters**:
   - `latitude` (number): Latitude of the location.
   - `longitude` (number): Longitude of the location.
 
 ### `get_forecast`
-Returns weather forecast (temperature, wind, precipitation, clouds) for a specific location.
+Returns weather forecast (temperature, humidity, pressure, wind, precipitation, clouds, solar radiation) for a specific location.
 - **Parameters**:
   - `latitude` (number): Latitude of the location.
   - `longitude` (number): Longitude of the location.
   - `hours` (integer, default=24): Number of hours to forecast.
 
 ### `get_historical_weather`
-Returns a summary of historical weather conditions (temperature, precipitation, wind) for a specific location and date range.
+Returns a summary of historical weather conditions (temperature, humidity, precipitation, wind, pressure, solar radiation) for a specific location and date range.
 - **Parameters**:
   - `latitude` (number): Latitude of the location.
   - `longitude` (number): Longitude of the location.

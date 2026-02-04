@@ -1,3 +1,6 @@
 mcp
 wetterdienst
 polars
+pytest
+pytest-asyncio
+pytest-mock
