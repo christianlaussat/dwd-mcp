@@ -4,8 +4,8 @@
   "contextFileName": "GEMINI.md",
   "mcpServers": {
     "dwd": {
-      "command": "${extensionPath}/.venv/bin/python3",
-      "args": ["${extensionPath}/server.py"],
+      "command": "uv",
+      "args": ["run", "server.py"],
       "cwd": "${extensionPath}",
       "env": {
         "PYTHONUNBUFFERED": "1"

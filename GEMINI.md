@@ -33,19 +33,16 @@ Returns a summary of historical weather conditions (temperature, humidity, preci
 
 ## Setup & Configuration
 
-1.  **Install Dependencies**:
-    Ensure you have Python installed, then run:
-    ```bash
-    pip install -r requirements.txt
-    ```
+1.  **Install uv**:
+    Ensure you have `uv` installed ([astral.sh/uv](https://astral.sh/uv)).
 
 2.  **MCP Configuration**:
-    Add the server to your Gemini CLI configuration (e.g., in `~/.gemini/config.json` or by using the `/mcp` command if available).
+    Add the server to your Gemini CLI configuration.
 
-    **Command**: `/path/to/dwd-mcp/.venv/bin/python3` (or path to your python executable)
-    **Args**: `["/path/to/dwd-mcp/server.py"]`
+    **Command**: `uv`
+    **Args**: `["--directory", "/path/to/dwd-mcp", "run", "server.py"]`
 
-    *Note: Adjust the path to `server.py` to match your installation directory.*
+    *Note: Using `uv run` ensures all dependencies are automatically installed and managed in an isolated environment.*
 
 ## Usage Examples
 
