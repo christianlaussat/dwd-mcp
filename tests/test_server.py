@@ -53,10 +53,10 @@ async def test_get_current_weather_success(mock_request_cls):
     mock_values = MagicMock()
     now = datetime.datetime.now(datetime.timezone.utc)
     mock_values.df = pl.DataFrame({
-        "station_id": ["10382", "10382"],
-        "parameter": ["temperature_air_mean_2m", "humidity"],
-        "value": [15.5, 80.0],
-        "date": [now, now]
+        "station_id": ["10382"] * 3,
+        "parameter": ["temperature_air_mean_2m", "humidity", "precipitation_form"],
+        "value": [15.5, 80.0, 3.0], # 3.0 is Snow
+        "date": [now] * 3
     })
     mock_stations_filtered.values.all.return_value = mock_values
     
@@ -66,6 +66,7 @@ async def test_get_current_weather_success(mock_request_cls):
     assert len(result) == 1
     assert "Temperature: 15.5 °C" in result[0].text
     assert "Humidity: 80.0 %" in result[0].text
+    assert "Precipitation Form: Snow" in result[0].text
     assert "Berlin-Tempelhof" in result[0].text
 
 @pytest.mark.asyncio
@@ -86,9 +87,9 @@ async def test_get_forecast_success(mock_request_cls):
     mock_values = MagicMock()
     future_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=2)
     mock_values.df = pl.DataFrame({
-        "parameter": ["temperature_air_mean_2m", "wind_speed"],
-        "value": [10.0, 5.0],
-        "date": [future_date, future_date]
+        "parameter": ["temperature_air_mean_2m", "wind_speed", "significant_weather"],
+        "value": [10.0, 5.0, 71.0], # 71 is Light Snow
+        "date": [future_date] * 3
     })
     mock_stations.values.all.return_value = mock_values
     
@@ -98,6 +99,7 @@ async def test_get_forecast_success(mock_request_cls):
     assert len(result) == 1
     assert "Forecast for Berlin-Tempelhof" in result[0].text
     assert "Temp: 10.0 °C" in result[0].text
+    assert "Weather: Light Snow" in result[0].text
     assert "Wind: 5.0 m/s" in result[0].text
 
 @pytest.mark.asyncio
@@ -164,7 +166,7 @@ async def test_get_historical_weather_success(mock_request_cls):
     assert "Humidity: Avg 85.0%, Min 80%, Max 90%" in result[0].text
     assert "Pressure (from Berlin-Tempelhof)" in result[0].text
     assert "Average: 1011.0 hPa" in result[0].text
-    assert "Total: 3.0 mm" in result[0].text
+    assert "Total Precipitation: 3.0 mm" in result[0].text
     assert "Average Speed: 4.0 m/s" in result[0].text
     assert "Solar Radiation (from Berlin-Tempelhof)" in result[0].text
     assert "Total: 300.0 J/cm²" in result[0].text

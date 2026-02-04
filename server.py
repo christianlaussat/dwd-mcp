@@ -89,6 +89,73 @@ def get_wind_direction_label(degrees: float) -> str:
     arr = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
     return arr[(val % 16)]
 
+def get_precipitation_form_label(code: float) -> str:
+    if code is None:
+        return "Unknown"
+    # DWD WR codes:
+    # 0: no precipitation
+    # 1: rain
+    # 2: unknown
+    # 3: snow
+    # 4: rain and snow
+    # 5: unknown
+    # 6: rain and snow (mixed)
+    # 7: sleet/ice pellets
+    # 8: hail
+    # 9: no precipitation (with recent history)
+    mapping = {
+        0.0: "None",
+        1.0: "Rain",
+        2.0: "Unknown",
+        3.0: "Snow",
+        4.0: "Rain and Snow",
+        5.0: "Unknown",
+        6.0: "Mixed Rain and Snow",
+        7.0: "Sleet",
+        8.0: "Hail",
+        9.0: "None (recently ended)",
+    }
+    return mapping.get(code, f"Code {code}")
+
+def get_significant_weather_label(code: float) -> str:
+    if code is None:
+        return "Unknown"
+    # DWD WW codes (MOSMIX) - more detailed mapping
+    mapping = {
+        0: "Clear",
+        1: "Partly Cloudy",
+        2: "Cloudy",
+        3: "Overcast",
+        45: "Fog",
+        49: "Fog with Rime",
+        51: "Light Drizzle",
+        53: "Moderate Drizzle",
+        55: "Heavy Drizzle",
+        61: "Light Rain",
+        63: "Moderate Rain",
+        65: "Heavy Rain",
+        68: "Light Sleet",
+        69: "Heavy Sleet",
+        71: "Light Snow",
+        73: "Moderate Snow",
+        75: "Heavy Snow",
+        80: "Light Rain Showers",
+        81: "Moderate Rain Showers",
+        82: "Violent Rain Showers",
+        83: "Light Sleet Showers",
+        84: "Heavy Sleet Showers",
+        85: "Light Snow Showers",
+        86: "Heavy Snow Showers",
+        87: "Light Graupel/Hail Showers",
+        88: "Heavy Graupel/Hail Showers",
+        89: "Light Hail Showers",
+        90: "Heavy Hail Showers",
+        95: "Light/Moderate Thunderstorm",
+        96: "Thunderstorm with Hail",
+        99: "Heavy Thunderstorm",
+    }
+    return mapping.get(int(code), f"Weather Code {code}")
+
 async def get_current_weather(arguments: Any) -> List[types.TextContent]:
     latitude = arguments.get("latitude")
     longitude = arguments.get("longitude")
@@ -166,16 +233,17 @@ async def get_current_weather(arguments: Any) -> List[types.TextContent]:
             "pressure_air_site": {"label": "Pressure (Station)", "unit": "hPa", "dataset": "pressure"},
             "pressure_air_sea_level": {"label": "Pressure (Sea Level)", "unit": "hPa", "dataset": "pressure"},
             "precipitation_height": {"label": "Precipitation", "unit": "mm", "dataset": "precipitation"},
+            "precipitation_form": {"label": "Precipitation Form", "unit": "", "dataset": "precipitation"},
             "wind_speed": {"label": "Wind Speed", "unit": "m/s", "dataset": "wind"},
             "wind_direction": {"label": "Wind Direction", "unit": "°", "dataset": "wind"},
-            "cloud_cover_total": {"label": "Cloud Cover", "unit": "%", "dataset": "cloud_type"},
+            "cloud_cover_total": {"label": "Cloud Cover", "unit": "1/8", "dataset": "cloud_type"},
             "radiation_global": {"label": "Global Radiation", "unit": "J/cm²", "dataset": "solar"},
         }
         
         # Order of display
         display_order = [
             "temperature_air_mean_2m", "humidity", "pressure_air_site", "pressure_air_sea_level",
-            "precipitation_height", "wind_speed", "wind_direction", "cloud_cover_total", "radiation_global"
+            "precipitation_height", "precipitation_form", "wind_speed", "wind_direction", "cloud_cover_total", "radiation_global"
         ]
         
         results = {}
@@ -228,12 +296,7 @@ async def get_current_weather(arguments: Any) -> List[types.TextContent]:
                 station_id = data["station_id"]
                 
                 # Find station name from our map
-                # We need to look up which dataset this parameter belongs to, then find the station name for that dataset
-                # OR, strictly speaking, look up station name by ID from stations_all.df
-                # Simple lookup:
                 station_name = "Unknown Station"
-                # Scan best_stations_df or filtered stations to find name for this ID
-                # We can do it efficiently
                 st_row = best_stations_df.filter(pl.col("station_id") == station_id).head(1)
                 if not st_row.is_empty():
                     station_name = st_row.row(0, named=True)["name"]
@@ -247,6 +310,10 @@ async def get_current_weather(arguments: Any) -> List[types.TextContent]:
                 if param == "wind_direction":
                     direction_label = get_wind_direction_label(val)
                     formatted_val = f"{val}° ({direction_label})"
+                elif param == "precipitation_form":
+                    formatted_val = get_precipitation_form_label(val)
+                elif param == "cloud_cover_total":
+                     formatted_val = f"{int(val)}/8"
                 
                 response_lines.append(f"- {label}: {formatted_val} [from {station_str}]")
         
@@ -275,6 +342,7 @@ async def get_forecast(arguments: Any) -> List[types.TextContent]:
                 ("hourly", "small", "humidity_air_mean_2m"),
                 ("hourly", "small", "pressure_air_site_mean_2m"),
                 ("hourly", "small", "precipitation_height_significant_weather_last_1h"),
+                ("hourly", "small", "significant_weather"),
                 ("hourly", "small", "wind_speed"),
                 ("hourly", "small", "wind_direction"),
                 ("hourly", "small", "cloud_cover_total"),
@@ -320,7 +388,6 @@ async def get_forecast(arguments: Any) -> List[types.TextContent]:
         
         # Filter for future dates (approximate)
         now = datetime.datetime.now(datetime.timezone.utc)
-        # Allow some margin (e.g. 1 hour back) to show current hour's forecast
         future_dates = [d for d in sorted_dates if d >= now - datetime.timedelta(hours=1)]
         
         if future_dates:
@@ -344,6 +411,11 @@ async def get_forecast(arguments: Any) -> List[types.TextContent]:
             if temp is not None:
                 parts.append(f"Temp: {temp:.1f} °C")
             
+            # Significant Weather
+            ww = data.get("significant_weather")
+            if ww is not None:
+                parts.append(f"Weather: {get_significant_weather_label(ww)}")
+
             # Humidity
             hum = data.get("humidity_air_mean_2m")
             if hum is not None:
@@ -416,12 +488,14 @@ async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
             ("hourly", "temperature_air", "temperature_air_mean_2m"),
             ("hourly", "temperature_air", "humidity"),
             ("hourly", "precipitation", "precipitation_height"),
+            ("hourly", "precipitation", "precipitation_form"),
             ("hourly", "wind", "wind_speed"),
             ("hourly", "wind", "wind_direction"),
             ("hourly", "cloud_type", "cloud_cover_total"),
             ("hourly", "pressure", "pressure_air_site"),
             ("hourly", "pressure", "pressure_air_sea_level"),
             ("hourly", "solar", "radiation_global"),
+            ("daily", "climate_summary", "snow_depth"),
         ]
         
         request = DwdObservationRequest(
@@ -476,7 +550,6 @@ async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
             max_temp = temp_df["value"].max()
             avg_temp = temp_df["value"].mean()
             
-            # Find when min/max occurred
             min_row = temp_df.sort("value").head(1).row(0, named=True)
             max_row = temp_df.sort("value", descending=True).head(1).row(0, named=True)
             
@@ -511,18 +584,33 @@ async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
             response_lines.append(f"- Range: {min_press:.1f} to {max_press:.1f} hPa")
             response_lines.append("")
 
-        # Precipitation
+        # Precipitation & Snow
         precip_df = df.filter(pl.col("parameter") == "precipitation_height").drop_nulls(subset=["value"])
-        if not precip_df.is_empty():
-            total_precip = precip_df["value"].sum()
-            max_precip_row = precip_df.sort("value", descending=True).head(1).row(0, named=True)
-            
+        precip_form_df = df.filter(pl.col("parameter") == "precipitation_form").drop_nulls(subset=["value"])
+        snow_df = df.filter(pl.col("parameter") == "snow_depth").drop_nulls(subset=["value"])
+        
+        if not precip_df.is_empty() or not precip_form_df.is_empty() or not snow_df.is_empty():
             st_info = dataset_station_map.get("precipitation", {"name": "Unknown"})
+            response_lines.append(f"Precipitation & Snow (from {st_info['name']}):")
+            
+            if not precip_df.is_empty():
+                total_precip = precip_df["value"].sum()
+                max_precip_row = precip_df.sort("value", descending=True).head(1).row(0, named=True)
+                response_lines.append(f"- Total Precipitation: {total_precip:.1f} mm")
+                if total_precip > 0:
+                    response_lines.append(f"- Max Hourly Precip: {max_precip_row['value']:.1f} mm (on {max_precip_row['date']})")
+            
+            if not precip_form_df.is_empty():
+                forms = precip_form_df["value"].unique().to_list()
+                if forms:
+                    form_labels = [get_precipitation_form_label(f) for f in forms if f > 0]
+                    if form_labels:
+                        response_lines.append(f"- Types observed: {', '.join(sorted(set(form_labels)))}")
+            
+            if not snow_df.is_empty():
+                max_snow = snow_df["value"].max()
+                response_lines.append(f"- Max Snow Depth: {max_snow:.1f} cm")
 
-            response_lines.append(f"Precipitation (from {st_info['name']}):")
-            response_lines.append(f"- Total: {total_precip:.1f} mm")
-            if total_precip > 0:
-                response_lines.append(f"- Max Hourly: {max_precip_row['value']:.1f} mm (on {max_precip_row['date']})")
             response_lines.append("")
             
         # Wind
@@ -550,10 +638,10 @@ async def get_historical_weather(arguments: Any) -> List[types.TextContent]:
             response_lines.append("")
 
         if len(response_lines) <= 3:
-            # Only header and period, no actual data
             return [types.TextContent(type="text", text=f"No relevant weather parameters found in the requested range for the nearby stations. Found parameters: {df['parameter'].unique().to_list()}")]
 
         return [types.TextContent(type="text", text="\n".join(response_lines))]
+
 
     except Exception as e:
         logger.error(f"Error fetching historical weather: {e}")
