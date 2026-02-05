@@ -5,11 +5,7 @@
   "mcpServers": {
     "dwd": {
       "command": "uv",
-      "args": ["run", "server.py"],
-      "cwd": "${extensionPath}",
-      "env": {
-        "PYTHONUNBUFFERED": "1"
-      }
+      "args": ["--directory", "${extensionPath}", "run", "server.py"]
     }
   }
 }
