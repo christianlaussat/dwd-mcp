@@ -41,10 +41,12 @@ uv run pytest
 - `get_current_weather(latitude, longitude)`: Returns current weather conditions.
 - `get_forecast(latitude, longitude, hours=24)`: Returns hourly weather forecast.
 - `get_historical_weather(latitude, longitude, start_date, end_date)`: Returns historical weather summary.
+- `get_stations(name=None, state=None)`: Search for DWD weather stations.
 
 ## Usage Examples
 
 - "What is the current temperature at latitude 52.52, longitude 13.40?"
 - "Get the 12-hour forecast for 48.13, 11.58."
+- "Find DWD weather stations in Berlin."
 - "What was the coldest day in December 2024 in Dresden (lat 51.05, lon 13.74)?"
 - "How much rain fell in Berlin (lat 52.52, lon 13.40) last month?"
