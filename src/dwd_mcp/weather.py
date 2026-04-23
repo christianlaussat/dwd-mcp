@@ -33,8 +33,8 @@ async def search_stations(name: Optional[str] = None, state: Optional[str] = Non
     """Search for DWD weather stations by name or state."""
     try:
         request = DwdObservationRequest(
-            parameter=[("hourly", "temperature_air")],
-            period="recent"
+            parameters=[("hourly", "temperature_air")],
+            periods="recent"
         )
         stations = request.all()
         df = stations.df
